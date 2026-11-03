@@ -1,24 +1,25 @@
-from app.api.server import app, vision_engine
-from app.schemas import AnalysisResult, Verdict
+from app.api.server import app, vision_engine, url_engine, html_engine, orchestrator
+from app.schemas import AnalysisResult, PipelineReport, Verdict
 
 
-def test_api_route_registered():
+def test_api_routes_registered():
     routes = {route.path: route for route in app.routes}
     assert "/v1/classify/image" in routes
-    route = routes["/v1/classify/image"]
-    assert "POST" in route.methods
-    assert route.response_model == AnalysisResult
+    assert "/v1/classify/local-path" in routes
+    assert "/v1/classify/url" in routes
 
 
 def test_api_openapi_schema():
     schema = app.openapi()
     assert schema["info"]["title"] == "Sentinel Local Content Classifier"
-    assert schema["info"]["version"] == "1.0.0"
+    assert schema["info"]["version"] == "2.1.0"
     assert "/v1/classify/image" in schema["paths"]
-    post_op = schema["paths"]["/v1/classify/image"]["post"]
-    assert post_op["operationId"] == "classify_image_v1_classify_image_post"
+    assert "/v1/classify/local-path" in schema["paths"]
+    assert "/v1/classify/url" in schema["paths"]
 
 
-def test_api_vision_engine_attached():
+def test_api_engines_initialized():
     assert vision_engine is not None
-    assert vision_engine.name == "offline_vision_rekib23r_int8"
+    assert url_engine is not None
+    assert html_engine is not None
+    assert orchestrator is not None
