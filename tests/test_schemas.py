@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from app.schemas import Verdict, AnalysisResult
+from app.schemas import Verdict, AnalysisResult, PipelineReport
 
 
 def test_verdict_enum_values():
@@ -15,7 +15,7 @@ def test_analysis_result_validation_success():
         verdict=Verdict.SAFE,
         nsfw_probability=0.05,
         latency_ms=12.5,
-        metadata={"normal": 0.95, "nsfw": 0.05},
+        metadata={"normal": 0.95, "nsfw": 0.05, "complex_obj": ["a", "b"]},
     )
     assert result.analyzer_name == "test_analyzer"
     assert result.verdict == Verdict.SAFE
@@ -39,3 +39,23 @@ def test_analysis_result_probability_bounds():
             nsfw_probability=-0.1,
             latency_ms=10.0,
         )
+
+
+def test_pipeline_report_validation():
+    step = AnalysisResult(
+        analyzer_name="tier1_url_lexical",
+        verdict=Verdict.SAFE,
+        nsfw_probability=0.01,
+        latency_ms=0.5,
+    )
+    report = PipelineReport(
+        target="https://example.com",
+        final_verdict=Verdict.SAFE,
+        confidence=0.01,
+        triggered_by="tier1_url_lexical",
+        total_latency_ms=0.5,
+        steps=[step],
+    )
+    assert report.target == "https://example.com"
+    assert report.final_verdict == Verdict.SAFE
+    assert len(report.steps) == 1
