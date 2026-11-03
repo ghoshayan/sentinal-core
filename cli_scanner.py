@@ -5,7 +5,10 @@ from app.analyzers.vision_onnx import OfflineVisionAnalyzer
 def scan_target(target_path: str):
     analyzer = OfflineVisionAnalyzer()
     path = Path(target_path)
-    files = [path] if path.is_file() else list(path.rglob("*.jpg")) + list(path.rglob("*.png")) + list(path.rglob("*.webp"))
+    supported_exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+    files = [path] if path.is_file() else [
+        p for p in path.rglob("*") if p.suffix.lower() in supported_exts
+    ]
 
     for file_path in files:
         result = analyzer.analyze(file_path)

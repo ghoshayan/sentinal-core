@@ -38,3 +38,14 @@ def test_analyze_synthetic_safe_image(analyzer):
     assert result.latency_ms > 0
     assert "normal" in result.metadata
     assert "nsfw" in result.metadata
+
+def test_analyze_offline_file_path(analyzer, tmp_path: Path):
+    # Verify offline disk file loading via pathlib.Path
+    img_path: Path = tmp_path / "offline_test.jpg"
+    Image.new("RGB", (224, 224), color="green").save(img_path)
+
+    result = analyzer.analyze(img_path)
+    assert img_path.exists()
+    assert result.verdict == Verdict.SAFE
+    assert 0.0 <= result.nsfw_probability <= 1.0
+
