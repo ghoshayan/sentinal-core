@@ -1,56 +1,97 @@
-from pathlib import Path
-from typing import Any, List, Optional, Union
+import io
+import time
+import httpx
 from PIL import Image
-from pydantic import BaseModel, Field
 
-from app.analyzers.base import BaseAnalyzer
+from app.analyzers.url_lexical import UrlLexicalAnalyzer
+from app.analyzers.html_metadata import HtmlMetadataAnalyzer
+from app.analyzers.playwright_dynamic import PlaywrightDynamicAnalyzer
 from app.analyzers.vision_onnx import OfflineVisionAnalyzer
-from app.schemas import AnalysisResult, Verdict
+from app.schemas import AnalysisResult, PipelineReport, Verdict
 
+class CascadeOrchestrator:
+    def __init__(
+        self,
+        url_analyzer: UrlLexicalAnalyzer,
+        html_analyzer: HtmlMetadataAnalyzer,
+        vision_analyzer: OfflineVisionAnalyzer,
+        playwright_analyzer: PlaywrightDynamicAnalyzer | None = None
+    ):
+        self.url_analyzer = url_analyzer
+        self.html_analyzer = html_analyzer
+        self.vision_analyzer = vision_analyzer
+        self.playwright_analyzer = playwright_analyzer
 
-class PipelineVerdict(BaseModel):
-    """Aggregated moderation result across all configured analyzers."""
-    overall_verdict: Verdict
-    max_nsfw_probability: float = Field(..., ge=0.0, le=1.0)
-    total_latency_ms: float
-    results: List[AnalysisResult] = Field(default_factory=list)
+    def classify_website(self, url: str) -> PipelineReport:
+        pipeline_start = time.perf_counter()
+        steps: list[AnalysisResult] = []
 
+        # --- TIER 1: URL & Domain Blocklist ---
+        t1_res = self.url_analyzer.analyze(url)
+        steps.append(t1_res)
+        if t1_res.verdict == Verdict.NSFW:
+            return self._finalize(url, t1_res, steps, pipeline_start)
 
-class ModerationOrchestrator:
-    """Coordinates execution across registered analyzers and aggregates safety verdicts."""
+        # --- TIER 2A: Fast Static HTML Metadata & Text (httpx) ---
+        t2_res = self.html_analyzer.analyze(url)
+        steps.append(t2_res)
 
-    def __init__(self, analyzers: Optional[List[BaseAnalyzer]] = None):
-        self.analyzers: List[BaseAnalyzer] = (
-            analyzers if analyzers is not None else [OfflineVisionAnalyzer()]
-        )
+        # --- TIER 2B: Dynamic JS Fallback (Playwright) ---
+        # Trigger Playwright ONLY if httpx hit an unrendered JS SPA or anti-bot error
+        reason = (t2_res.metadata or {}).get("reason", "")
+        has_error = "error" in (t2_res.metadata or {})
 
-    def register_analyzer(self, analyzer: BaseAnalyzer) -> None:
-        """Register an additional analyzer engine dynamically."""
-        self.analyzers.append(analyzer)
+        if self.playwright_analyzer and (has_error or reason == "low_text_image_heavy_page"):
+            t2_res = self.playwright_analyzer.analyze(url)
+            steps.append(t2_res)
 
-    def scan_image(self, payload: Union[str, Path, Image.Image]) -> PipelineVerdict:
-        """Execute all analyzers against the image payload and synthesize the verdict."""
-        results: List[AnalysisResult] = []
-        total_latency = 0.0
-        max_prob = 0.0
+        # Short-circuit if Tier 2A or Tier 2B reached a definitive SAFE or NSFW verdict
+        if t2_res.verdict in (Verdict.NSFW, Verdict.SAFE):
+            return self._finalize(url, t2_res, steps, pipeline_start)
 
-        for analyzer in self.analyzers:
-            res = analyzer.analyze(payload)
-            results.append(res)
-            total_latency += res.latency_ms
-            if res.nsfw_probability > max_prob:
-                max_prob = res.nsfw_probability
+        # --- TIER 3: Visual DOM Fallback (Only runs when Tier 2 is UNCERTAIN) ---
+        candidate_images = (t2_res.metadata or {}).get("candidate_images", [])
+        highest_vision_res: AnalysisResult | None = None
 
-        if any(r.verdict == Verdict.NSFW for r in results):
-            overall = Verdict.NSFW
-        elif any(r.verdict == Verdict.UNCERTAIN for r in results):
-            overall = Verdict.UNCERTAIN
-        else:
-            overall = Verdict.SAFE
+        for img_url in candidate_images:
+            img_res = self._analyze_remote_image(img_url)
+            if img_res:
+                steps.append(img_res)
+                if highest_vision_res is None or img_res.nsfw_probability > highest_vision_res.nsfw_probability:
+                    highest_vision_res = img_res
+                # Early exit on the first high-confidence NSFW image found
+                if img_res.verdict == Verdict.NSFW:
+                    return self._finalize(url, img_res, steps, pipeline_start)
 
-        return PipelineVerdict(
-            overall_verdict=overall,
-            max_nsfw_probability=round(max_prob, 4),
-            total_latency_ms=round(total_latency, 2),
-            results=results,
+        final_step = highest_vision_res or t2_res
+        return self._finalize(url, final_step, steps, pipeline_start)
+
+    def _analyze_remote_image(self, img_url: str) -> AnalysisResult | None:
+        try:
+            with httpx.Client(timeout=4.0, follow_redirects=True) as client:
+                resp = client.get(img_url)
+                resp.raise_for_status()
+                image = Image.open(io.BytesIO(resp.content))
+                result = self.vision_analyzer.analyze(image)
+                if result.metadata is not None:
+                    result.metadata["image_url"] = img_url
+                return result
+        except Exception:
+            return None
+
+    def _finalize(
+        self,
+        url: str,
+        deciding_result: AnalysisResult,
+        steps: list[AnalysisResult],
+        start_time: float
+    ) -> PipelineReport:
+        total_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        return PipelineReport(
+            target=url,
+            final_verdict=deciding_result.verdict,
+            confidence=deciding_result.nsfw_probability,
+            triggered_by=deciding_result.analyzer_name,
+            total_latency_ms=total_ms,
+            steps=steps
         )
