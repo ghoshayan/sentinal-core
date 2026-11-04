@@ -9,3 +9,4 @@ for mod_name in ["httpx", "bs4", "playwright", "playwright.sync_api"]:
             __import__(mod_name)
         except ImportError:
             sys.modules[mod_name] = MagicMock()
+

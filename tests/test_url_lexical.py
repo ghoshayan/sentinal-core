@@ -21,3 +21,4 @@ def test_url_lexical_clean_url():
     analyzer = UrlLexicalAnalyzer(blocklist_path="nonexistent.txt")
     res = analyzer.analyze("https://news.ycombinator.com")
     assert res.verdict == Verdict.UNCERTAIN
+
