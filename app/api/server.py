@@ -8,17 +8,17 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from app.analyzers.url_lexical import UrlLexicalAnalyzer
 from app.analyzers.html_metadata import HtmlMetadataAnalyzer
 from app.analyzers.playwright_dynamic import PlaywrightDynamicAnalyzer
-from app.analyzers.vision_onnx import OfflineVisionAnalyzer
+from app.analyzers.vision_subcategory import HierarchicalVisionAnalyzer  # Replaced OfflineVisionAnalyzer
 from app.orchestrator import CascadeOrchestrator
 from app.schemas import AnalysisResult, PipelineReport
 
-app = FastAPI(title="Sentinel Local Content Classifier", version="2.1.0")
+app = FastAPI(title="Sentinel Local Content Classifier", version="2.2.0")
 
-# Initialize all modular engines once at startup
+# Initialize modular engines once at startup
 url_engine = UrlLexicalAnalyzer()
 html_engine = HtmlMetadataAnalyzer()
 playwright_engine = PlaywrightDynamicAnalyzer()
-vision_engine = OfflineVisionAnalyzer()
+vision_engine = HierarchicalVisionAnalyzer()  # Uses two-stage nudity + subcategory classifier
 
 orchestrator = CascadeOrchestrator(
     url_analyzer=url_engine,

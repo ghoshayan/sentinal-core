@@ -1,3 +1,4 @@
+import importlib.machinery
 import sys
 from unittest.mock import MagicMock
 
@@ -8,5 +9,6 @@ for mod_name in ["httpx", "bs4", "playwright", "playwright.sync_api"]:
         try:
             __import__(mod_name)
         except ImportError:
-            sys.modules[mod_name] = MagicMock()
-
+            mock_mod = MagicMock()
+            mock_mod.__spec__ = importlib.machinery.ModuleSpec(mod_name, None)
+            sys.modules[mod_name] = mock_mod

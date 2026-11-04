@@ -46,3 +46,4 @@ def test_registry_ordering():
     ordered = AnalyzerRegistry.get_ordered_pipeline()
     tier_order = [a.tier for a in ordered if a.name.startswith("mock_")]
     assert tier_order == [10, 20]
+

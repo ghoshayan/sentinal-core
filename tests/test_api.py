@@ -12,7 +12,7 @@ def test_api_routes_registered():
 def test_api_openapi_schema():
     schema = app.openapi()
     assert schema["info"]["title"] == "Sentinel Local Content Classifier"
-    assert schema["info"]["version"] == "2.1.0"
+    assert schema["info"]["version"] == "2.2.0"
     assert "/v1/classify/image" in schema["paths"]
     assert "/v1/classify/local-path" in schema["paths"]
     assert "/v1/classify/url" in schema["paths"]

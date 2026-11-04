@@ -34,3 +34,4 @@ def test_analysis_result_tier_and_short_circuit():
     assert res.tier == 10
     assert res.short_circuit is True
     assert res.verdict == Verdict.NSFW
+

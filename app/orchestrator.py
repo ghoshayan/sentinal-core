@@ -91,6 +91,9 @@ class CascadeOrchestrator:
             target=url,
             final_verdict=deciding_result.verdict,
             confidence=deciding_result.nsfw_probability,
+            primary_category=deciding_result.primary_category,
+            subcategories=deciding_result.subcategories,
+            category_scores=deciding_result.category_scores,
             triggered_by=deciding_result.analyzer_name,
             total_latency_ms=total_ms,
             steps=steps
