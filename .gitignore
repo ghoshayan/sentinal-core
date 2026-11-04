@@ -47,8 +47,9 @@ Desktop.ini
 **/.cache/
 *.metadata
 
-# Large unquantized FP32 base model (exceeds GitHub 100MB limit)
+# Large model artifacts exceeding GitHub 100MB limit
 models/**/onnx/model.onnx
+models/**/onnx/model_quantized.onnx
 
 # Testing & code quality
 .pytest_cache/
