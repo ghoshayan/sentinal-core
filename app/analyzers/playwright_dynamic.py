@@ -4,7 +4,8 @@ from bs4 import BeautifulSoup
 
 from app.analyzers.base import BaseAnalyzer
 from app.analyzers.html_metadata import HtmlMetadataAnalyzer
-from app.schemas import AnalysisResult, Verdict
+from app.schemas import AnalysisResult, Verdict, NsfwSubcategory
+from app.utils.taxonomy import classify_text_taxonomy
 
 class PlaywrightDynamicAnalyzer(BaseAnalyzer):
     """
@@ -60,17 +61,18 @@ class PlaywrightDynamicAnalyzer(BaseAnalyzer):
         # Parse the fully JavaScript-rendered DOM
         soup = BeautifulSoup(rendered_html, "html.parser")
         title_text = soup.title.string if soup.title and soup.title.string else ""
-        body_text = soup.get_text(" ", strip=True).lower()[:5000]
+        body_text = soup.get_text(" ", strip=True)[:5000]
 
-        matched_keywords = [kw for kw in self._html_helper.EXPLICIT_KEYWORDS if kw in body_text]
+        primary_cat, subcats, cat_scores, matched_keywords = classify_text_taxonomy(
+            f"{title_text} {body_text}"
+        )
         candidate_images = self._html_helper._extract_candidate_images(soup, final_url)
-
         latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
-        if len(matched_keywords) >= 3:
-            prob = min(0.80 + 0.05 * len(matched_keywords), 0.97)
+        if len(matched_keywords) >= 2:
+            prob = min(0.80 + 0.04 * len(matched_keywords), 0.98)
             verdict = Verdict.NSFW
-        elif len(matched_keywords) in (1, 2) or candidate_images:
+        elif len(matched_keywords) == 1 or candidate_images:
             prob = 0.55
             verdict = Verdict.UNCERTAIN
         else:
@@ -81,6 +83,9 @@ class PlaywrightDynamicAnalyzer(BaseAnalyzer):
             analyzer_name=self.name,
             verdict=verdict,
             nsfw_probability=round(prob, 4),
+            primary_category=primary_cat,
+            subcategories=subcats,
+            category_scores=cat_scores,
             latency_ms=latency_ms,
             metadata={
                 "title": title_text,
